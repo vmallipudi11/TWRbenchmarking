@@ -43,7 +43,7 @@ def format_inr(x):
     x = abs(x)
 
     integer = int(x)
-    decimal = f"{x:.0f}".split(".")[1]
+    decimal = f"{x:.2f}".split(".")[1]
 
     s = str(integer)
 
