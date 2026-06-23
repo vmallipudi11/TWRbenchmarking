@@ -187,7 +187,7 @@ def build_chart_image(chart):
             label=column
         )
 
-    ax.set_title("Growth of Rs 100")
+    
     ax.set_xlabel("Date")
     ax.set_ylabel("Value")
     ax.grid(True, alpha=0.3)
