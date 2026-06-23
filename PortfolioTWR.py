@@ -1072,7 +1072,7 @@ if input_file:
     st.download_button(
         "Download PDF Report",
         data=pdf_bytes,
-        file_name=f"{selected_portfolio}_portfolio_report.pdf",
+        file_name=f"{selected_portfolio}_PortfolioReport.pdf",
         mime="application/pdf"
     )
 
