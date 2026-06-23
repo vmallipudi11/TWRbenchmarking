@@ -36,8 +36,9 @@ NIFTY500_PROXY = "0P0001IAU3.BO"
 st.markdown("""
 Upload:
 
-1. Transactions (Portfolio, Date, Ticker, Action, Quantity, Price)
-2. Cash Flows (Portfolio, Date, Amount)
+1. One Excel workbook with two tabs:
+   - Transactions (Portfolio, Date, Ticker, Action, Quantity, Price)
+   - Cashflows (Portfolio, Date, Amount)
 
 Benchmarks are automatically pulled from Yahoo Finance.
 """)
@@ -88,10 +89,7 @@ def format_display_ticker(ticker):
 
 
 @st.cache_data
-def read_file(file, password=None):
-    if file.name.endswith(".csv"):
-        return pd.read_csv(file)
-
+def read_workbook(file, password=None):
     file_bytes = BytesIO(file.getvalue())
 
     if password:
@@ -102,20 +100,35 @@ def read_file(file, password=None):
             decrypted_file = BytesIO()
             office_file.decrypt(decrypted_file)
             decrypted_file.seek(0)
-
-            return pd.read_excel(decrypted_file)
+            workbook_bytes = decrypted_file
         except Exception as exc:
             raise ValueError(
-                "Unable to open the transactions Excel file with the provided password."
+                "Unable to open the Excel file with the provided password."
             ) from exc
+    else:
+        workbook_bytes = file_bytes
 
     try:
-        file_bytes.seek(0)
-        return pd.read_excel(file_bytes)
+        workbook_bytes.seek(0)
+        tx = pd.read_excel(
+            workbook_bytes,
+            sheet_name="Transactions"
+        )
+        workbook_bytes.seek(0)
+        cf = pd.read_excel(
+            workbook_bytes,
+            sheet_name="Cashflows"
+        )
+    except ValueError as exc:
+        raise ValueError(
+            "The workbook must contain tabs named 'Transactions' and 'Cashflows'."
+        ) from exc
     except Exception as exc:
         raise ValueError(
-            "Unable to open the Excel file. If the transactions file is password protected, enter the password in the sidebar."
+            "Unable to open the Excel workbook. If the file is password protected, enter the password in the sidebar."
         ) from exc
+
+    return tx, cf
 
 
 @st.cache_data
@@ -673,34 +686,23 @@ def benchmark_replication(cf, series):
 # Uploads
 # --------------------------
 
-tx_file = st.sidebar.file_uploader(
-    "Transactions",
-    ["xlsx", "csv"]
+input_file = st.sidebar.file_uploader(
+    "Portfolio Workbook",
+    ["xlsx"]
 )
 
 tx_password = st.sidebar.text_input(
-    "Transactions Excel Password",
+    "Workbook Password",
     type="password"
 )
 
-cf_file = st.sidebar.file_uploader(
-    "Cash Flows",
-    ["xlsx", "csv"]
-)
-
-if tx_file and cf_file:
+if input_file:
 
     try:
-        tx = read_file(
-            tx_file,
+        tx, cf = read_workbook(
+            input_file,
             password=tx_password.strip() or None
         )
-    except ValueError as exc:
-        st.error(str(exc))
-        st.stop()
-
-    try:
-        cf = read_file(cf_file)
     except ValueError as exc:
         st.error(str(exc))
         st.stop()
@@ -731,7 +733,7 @@ if tx_file and cf_file:
 
     if missing_cf_cols:
         st.error(
-            "Cash flow file is missing columns: "
+            "Cashflows tab is missing columns: "
             + ", ".join(sorted(missing_cf_cols))
         )
         st.stop()
@@ -755,7 +757,7 @@ if tx_file and cf_file:
 
     if not available_portfolios:
         st.error(
-            "No common portfolios were found in the transactions and cash flow files."
+            "No common portfolios were found in the Transactions and Cashflows tabs."
         )
         st.stop()
 
@@ -1132,5 +1134,5 @@ if tx_file and cf_file:
 
 else:
     st.info(
-        "Upload Transactions and Cash Flow files to begin."
+        "Upload one workbook with 'Transactions' and 'Cashflows' tabs to begin."
     )
