@@ -982,7 +982,7 @@ if tx_file and cf_file:
     )
 
     st.subheader(
-        "Growth of ₹100"
+        "Growth of Portfolio"
     )
 
     fig = px.line(
