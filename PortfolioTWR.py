@@ -23,7 +23,7 @@ import msoffcrypto
 from io import BytesIO
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
@@ -312,19 +312,35 @@ def build_pdf_report(
     )
 
     styles = getSampleStyleSheet()
+    header_style = ParagraphStyle(
+        "ReportHeader",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=12,
+        alignment=0,
+        spaceAfter=0
+    )
+    section_style = ParagraphStyle(
+        "SectionHeader",
+        parent=styles["Heading2"],
+        fontSize=12,
+        leading=14,
+        spaceAfter=0,
+        spaceBefore=0
+    )
     story = [
         Paragraph(
             f"Client Name: {portfolio_name}",
-            styles["Title"]
+            header_style
         ),
-        Spacer(1, 0.08 * inch),
         Paragraph(
             f"Start Date: {format_display_date(start_date)}",
-            styles["Normal"]
+            header_style
         ),
-        Spacer(1, 0.2 * inch),
-        Paragraph("Performance Summary", styles["Heading2"]),
-        Spacer(1, 0.1 * inch)
+        Spacer(1, 0.1 * inch),
+        Paragraph("Performance Summary", section_style),
+        Spacer(1, 0.05 * inch)
     ]
 
     summary_metrics = [
@@ -349,16 +365,18 @@ def build_pdf_report(
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.lightgrey]),
                 ("ALIGN", (0, 0), (-1, -1), "LEFT"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("PADDING", (0, 0), (-1, -1), 6)
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("LEADING", (0, 0), (-1, -1), 11),
+                ("PADDING", (0, 0), (-1, -1), 4)
             ]
         )
     )
     story.extend(
         [
             metrics_table,
-            Spacer(1, 0.25 * inch),
-            Paragraph("Performance Comparison Table", styles["Heading2"]),
-            Spacer(1, 0.1 * inch)
+            Spacer(1, 0.12 * inch),
+            Paragraph("Performance Comparison Table", section_style),
+            Spacer(1, 0.05 * inch)
         ]
     )
 
@@ -387,26 +405,28 @@ def build_pdf_report(
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.beige]),
                 ("ALIGN", (1, 1), (-1, -1), "CENTER"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("PADDING", (0, 0), (-1, -1), 6)
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("LEADING", (0, 0), (-1, -1), 10),
+                ("PADDING", (0, 0), (-1, -1), 4)
             ]
         )
     )
     story.extend(
         [
             comparison_table,
-            Spacer(1, 0.25 * inch),
-            Paragraph("Growth of Portfolio", styles["Heading2"]),
-            Spacer(1, 0.1 * inch)
+            Spacer(1, 0.12 * inch),
+            Paragraph("Growth of Portfolio", section_style),
+            Spacer(1, 0.05 * inch)
         ]
     )
 
     chart_bytes = build_chart_image(chart)
-    story.append(Image(chart_bytes, width=7.2 * inch, height=3.6 * inch))
+    story.append(Image(chart_bytes, width=6.8 * inch, height=2.8 * inch))
     story.extend(
         [
-            Spacer(1, 0.25 * inch),
-            Paragraph("External Cash Flows", styles["Heading2"]),
-            Spacer(1, 0.1 * inch)
+            Spacer(1, 0.12 * inch),
+            Paragraph("External Cash Flows", section_style),
+            Spacer(1, 0.05 * inch)
         ]
     )
 
@@ -437,7 +457,9 @@ def build_pdf_report(
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.lightgrey]),
                 ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("PADDING", (0, 0), (-1, -1), 6)
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("LEADING", (0, 0), (-1, -1), 11),
+                ("PADDING", (0, 0), (-1, -1), 4)
             ]
         )
     )
@@ -446,8 +468,8 @@ def build_pdf_report(
     story.extend(
         [
             PageBreak(),
-            Paragraph("Current Holdings", styles["Heading2"]),
-            Spacer(1, 0.1 * inch)
+            Paragraph("Current Holdings", section_style),
+            Spacer(1, 0.05 * inch)
         ]
     )
 
@@ -473,7 +495,9 @@ def build_pdf_report(
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.lightgrey]),
         ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("PADDING", (0, 0), (-1, -1), 6),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("LEADING", (0, 0), (-1, -1), 11),
+        ("PADDING", (0, 0), (-1, -1), 4),
         ("FONTNAME", (0, cash_row_index), (-1, cash_row_index), "Helvetica-Bold")
     ]
     holdings_table.setStyle(TableStyle(holdings_style))
