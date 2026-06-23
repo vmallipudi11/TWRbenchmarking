@@ -362,7 +362,7 @@ def build_pdf_report(
         [
             comparison_table,
             Spacer(1, 0.25 * inch),
-            Paragraph("Growth of Rs 100 Chart", styles["Heading2"]),
+            Paragraph("Growth of Portfolio", styles["Heading2"]),
             Spacer(1, 0.1 * inch)
         ]
     )
