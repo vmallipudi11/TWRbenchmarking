@@ -312,15 +312,6 @@ def build_pdf_report(
     )
 
     styles = getSampleStyleSheet()
-    header_style = ParagraphStyle(
-        "ReportHeader",
-        parent=styles["Normal"],
-        fontName="Helvetica",
-        fontSize=10,
-        leading=12,
-        alignment=0,
-        spaceAfter=0
-    )
     section_style = ParagraphStyle(
         "SectionHeader",
         parent=styles["Heading2"],
@@ -332,11 +323,12 @@ def build_pdf_report(
     story = [
         Paragraph(
             f"Client Name: {portfolio_name}",
-            header_style
+            section_style
         ),
+        Spacer(1, 0.05 * inch),
         Paragraph(
             f"Start Date: {format_display_date(start_date)}",
-            header_style
+            section_style
         ),
         Spacer(1, 0.1 * inch),
         Paragraph("Performance Summary", section_style),
