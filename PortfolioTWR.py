@@ -32,6 +32,11 @@ current_date = date.today()
 LARGE_CAP_THRESHOLD = 900000000000
 MID_CAP_THRESHOLD = 300000000000
 PIE_COLORS = ["#1f77b4", "#ff7f0e", "#2ca02c"]
+PIE_COLOR_MAP = {
+    "Large Cap": "#1f77b4",
+    "Mid Cap": "#ff7f0e",
+    "Small Cap": "#2ca02c"
+}
 
 st.set_page_config(page_title="VIKA Portfolio TWR Tracker", layout="wide")
 st.title("VIKA Portfolio TWR Tracker")
@@ -343,6 +348,15 @@ def build_current_holdings(tx, prices, as_of_date, cash_balance):
     )
 
     holdings = holdings[["Ticker", "Value"]]
+    market_caps = get_market_caps(
+        holdings.loc[
+            holdings["Ticker"] != "Cash",
+            "Ticker"
+        ].dropna().astype(str).unique().tolist()
+    )
+    holdings["Market Cap"] = holdings["Ticker"].map(market_caps).apply(
+        classify_market_cap_bucket
+    )
     holdings = pd.concat(
         [
             holdings.sort_values("Ticker"),
@@ -350,6 +364,7 @@ def build_current_holdings(tx, prices, as_of_date, cash_balance):
         ],
         ignore_index=True
     )
+    holdings["Market Cap"] = holdings["Market Cap"].fillna("")
 
     total_value = holdings["Value"].sum()
     holdings["Weight"] = np.where(
@@ -373,7 +388,7 @@ def build_current_holdings(tx, prices, as_of_date, cash_balance):
         )
     )
 
-    return holdings[["Ticker", "Weight"]]
+    return holdings[["Ticker", "Market Cap", "Weight"]]
 
 
 def build_market_cap_allocation(tx, prices, as_of_date):
@@ -462,7 +477,7 @@ def build_market_cap_pie_image(allocation_data):
         textprops={"fontsize": 9}
     )
     ax.set_title(
-        "Market Cap Allocation (Excluding Cash)",
+        "",
         fontsize=11
     )
     ax.axis("equal")
@@ -477,6 +492,76 @@ def build_market_cap_pie_image(allocation_data):
     plt.close(fig)
     buffer.seek(0)
     return buffer
+
+
+def build_market_cap_pie_figure(allocation_data):
+
+    if allocation_data is None or allocation_data.empty:
+        return None
+
+    fig = px.pie(
+        allocation_data,
+        names="Bucket",
+        values="Value",
+        color="Bucket",
+        color_discrete_map=PIE_COLOR_MAP
+    )
+    fig.update_traces(
+        textposition="inside",
+        textinfo="percent+label",
+        sort=False
+    )
+    fig.update_layout(
+        width=700,
+        height=420,
+        margin=dict(l=20, r=20, t=60, b=20),
+        showlegend=False,
+        title_x=0.5
+    )
+    return fig
+
+
+def normalize_cash_flow_data(cash_flow_data):
+
+    if cash_flow_data is None:
+        return pd.DataFrame(columns=["Date", "Amount"])
+
+    normalized = cash_flow_data.copy()
+
+    if normalized.empty:
+        return pd.DataFrame(columns=["Date", "Amount"])
+
+    column_map = {}
+    for column in normalized.columns:
+        normalized_name = str(column).strip().lower()
+        if normalized_name == "date":
+            column_map[column] = "Date"
+        elif normalized_name == "amount":
+            column_map[column] = "Amount"
+
+    normalized = normalized.rename(columns=column_map)
+
+    if "Date" not in normalized.columns and normalized.index.name:
+        index_name = str(normalized.index.name).strip().lower()
+        if index_name == "date":
+            normalized = normalized.reset_index()
+            normalized = normalized.rename(columns={normalized.columns[0]: "Date"})
+
+    if "Date" not in normalized.columns and len(normalized.columns) >= 1:
+        normalized = normalized.rename(columns={normalized.columns[0]: "Date"})
+
+    if "Amount" not in normalized.columns and len(normalized.columns) >= 2:
+        second_col = [col for col in normalized.columns if col != "Date"]
+        if second_col:
+            normalized = normalized.rename(columns={second_col[0]: "Amount"})
+
+    if "Date" not in normalized.columns:
+        normalized["Date"] = pd.NaT
+
+    if "Amount" not in normalized.columns:
+        normalized["Amount"] = np.nan
+
+    return normalized[["Date", "Amount"]]
 
 
 def build_pdf_report(
@@ -628,9 +713,10 @@ def build_pdf_report(
         story.append(market_cap_image)
 
     cash_flow_rows = [["Date", "Amount"]]
+    normalized_cash_flows = normalize_cash_flow_data(cash_flow_data)
 
-    if cash_flow_data is not None and not cash_flow_data.empty:
-        for _, row in cash_flow_data.iterrows():
+    if not normalized_cash_flows.empty:
+        for _, row in normalized_cash_flows.iterrows():
             cash_flow_rows.append(
                 [
                     format_display_date(row["Date"]),
@@ -660,8 +746,6 @@ def build_pdf_report(
             ]
         )
     )
-    story.append(cash_flow_table)
-
     story.extend(
         [
             PageBreak(),
@@ -670,18 +754,19 @@ def build_pdf_report(
         ]
     )
 
-    holdings_rows = [["Ticker", "Weight"]]
+    holdings_rows = [["Ticker", "Market Cap", "Weight"]]
     for _, row in holdings_data.iterrows():
         holdings_rows.append(
             [
                 row["Ticker"],
+                row["Market Cap"],
                 f"{row['Weight']:.2%}" if pd.notna(row["Weight"]) else ""
             ]
         )
 
     holdings_table = Table(
         holdings_rows,
-        colWidths=[3.2 * inch, 2.4 * inch]
+        colWidths=[2.5 * inch, 1.6 * inch, 1.5 * inch]
     )
     cash_row_index = len(holdings_rows) - 1
     holdings_style = [
@@ -690,7 +775,7 @@ def build_pdf_report(
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.lightgrey]),
-        ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
+        ("ALIGN", (2, 1), (2, -1), "RIGHT"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("LEADING", (0, 0), (-1, -1), 11),
@@ -1259,10 +1344,19 @@ if input_file:
         y=chart.columns
     )
 
-    st.plotly_chart(
-        fig,
-        use_container_width=True
+    st.plotly_chart(fig, use_container_width=True)
+
+    pie_fig = build_market_cap_pie_figure(
+        market_cap_allocation
     )
+    if pie_fig is not None:
+        st.subheader("Market Cap Allocation")
+        left_col, center_col, right_col = st.columns([1, 2, 1])
+        with center_col:
+            st.plotly_chart(
+                pie_fig,
+                use_container_width=True
+            )
 
     pdf_bytes = build_pdf_report(
         selected_portfolio,
@@ -1303,22 +1397,6 @@ if input_file:
         use_container_width=True
     )
 
-    st.subheader("External Cash Flows")
-
-    display_cf = cash_flow_table.copy()
-    display_cf["Date"] = display_cf["Date"].apply(
-        format_display_date
-    )
-    display_cf["Amount"] = display_cf["Amount"].apply(
-        format_inr
-    )
-
-    st.dataframe(
-        display_cf,
-        use_container_width=True,
-        hide_index=True
-    )
-
     st.subheader("Current Holdings")
 
     display_holdings = holdings_table.copy()
@@ -1336,6 +1414,22 @@ if input_file:
             holdings_style,
             axis=1
         ),
+        use_container_width=True,
+        hide_index=True
+    )
+
+    st.subheader("External Cash Flows")
+
+    display_cf = cash_flow_table.copy()
+    display_cf["Date"] = display_cf["Date"].apply(
+        format_display_date
+    )
+    display_cf["Amount"] = display_cf["Amount"].apply(
+        format_inr
+    )
+
+    st.dataframe(
+        display_cf,
         use_container_width=True,
         hide_index=True
     )
