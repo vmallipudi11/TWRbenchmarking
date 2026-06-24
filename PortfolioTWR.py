@@ -29,6 +29,10 @@ from reportlab.platypus import Image, PageBreak, Paragraph, SimpleDocTemplate, S
 from datetime import date
 current_date = date.today()
 
+LARGE_CAP_THRESHOLD = 900000000000
+MID_CAP_THRESHOLD = 300000000000
+PIE_COLORS = ["#1f77b4", "#ff7f0e", "#2ca02c"]
+
 st.set_page_config(page_title="VIKA Portfolio TWR Tracker", layout="wide")
 st.title("VIKA Portfolio TWR Tracker")
 
@@ -234,6 +238,73 @@ def build_chart_image(chart):
     return buffer
 
 
+@st.cache_data
+def get_market_caps(tickers):
+
+    market_caps = {}
+
+    for ticker in tickers:
+
+        if not ticker or ticker == "Cash":
+            continue
+
+        attempts = [ticker]
+
+        if ticker.endswith(".NS"):
+            attempts.append(
+                ticker.replace(".NS", ".BO")
+            )
+
+        for sym in attempts:
+            try:
+                ticker_obj = yf.Ticker(sym)
+
+                market_cap = None
+                fast_info = getattr(ticker_obj, "fast_info", None)
+
+                if fast_info is not None:
+                    if hasattr(fast_info, "get"):
+                        market_cap = fast_info.get("market_cap")
+
+                    if market_cap is None:
+                        try:
+                            market_cap = fast_info["market_cap"]
+                        except Exception:
+                            pass
+
+                    if market_cap is None:
+                        if hasattr(fast_info, "get"):
+                            market_cap = fast_info.get("marketCap")
+
+                if market_cap is None:
+                    info = ticker_obj.info
+                    if isinstance(info, dict):
+                        market_cap = info.get("marketCap")
+
+                if market_cap is not None and pd.notna(market_cap):
+                    market_caps[ticker] = float(market_cap)
+                    break
+
+            except Exception:
+                pass
+
+    return market_caps
+
+
+def classify_market_cap_bucket(market_cap):
+
+    if pd.isna(market_cap):
+        return None
+
+    if market_cap > LARGE_CAP_THRESHOLD:
+        return "Large Cap"
+
+    if market_cap >= MID_CAP_THRESHOLD:
+        return "Mid Cap"
+
+    return "Small Cap"
+
+
 def build_current_holdings(tx, prices, as_of_date, cash_balance):
 
     tx = tx.copy()
@@ -305,6 +376,109 @@ def build_current_holdings(tx, prices, as_of_date, cash_balance):
     return holdings[["Ticker", "Weight"]]
 
 
+def build_market_cap_allocation(tx, prices, as_of_date):
+
+    if tx is None or tx.empty or prices is None or prices.empty:
+        return pd.DataFrame(columns=["Bucket", "Value", "Weight"])
+
+    equity_tx = tx.copy()
+    equity_tx["Signed Quantity"] = np.where(
+        equity_tx["Action"].astype(str).str.upper() == "BUY",
+        equity_tx["Quantity"].astype(float),
+        -equity_tx["Quantity"].astype(float)
+    )
+    equity_holdings = (
+        equity_tx.groupby("Ticker", as_index=False)["Signed Quantity"]
+        .sum()
+    )
+    equity_holdings = equity_holdings[
+        equity_holdings["Signed Quantity"] > 0
+    ].copy()
+
+    if equity_holdings.empty:
+        return pd.DataFrame(columns=["Bucket", "Value", "Weight"])
+
+    equity_holdings["Value"] = equity_holdings.apply(
+        lambda row: row["Signed Quantity"] * prices.loc[as_of_date, row["Ticker"]],
+        axis=1
+    )
+    equity_holdings = equity_holdings[
+        equity_holdings["Value"] > 0
+    ].copy()
+
+    if equity_holdings.empty:
+        return pd.DataFrame(columns=["Bucket", "Value", "Weight"])
+
+    market_caps = get_market_caps(
+        equity_holdings["Ticker"].dropna().astype(str).unique().tolist()
+    )
+
+    equity_holdings["Market Cap"] = equity_holdings["Ticker"].map(market_caps)
+    equity_holdings["Bucket"] = equity_holdings["Market Cap"].apply(classify_market_cap_bucket)
+    equity_holdings = equity_holdings[
+        equity_holdings["Bucket"].notna()
+    ].copy()
+
+    if equity_holdings.empty:
+        return pd.DataFrame(columns=["Bucket", "Value", "Weight"])
+
+    allocation = (
+        equity_holdings.groupby("Bucket", as_index=False)["Value"]
+        .sum()
+    )
+
+    bucket_order = ["Large Cap", "Mid Cap", "Small Cap"]
+    allocation["Bucket"] = pd.Categorical(
+        allocation["Bucket"],
+        categories=bucket_order,
+        ordered=True
+    )
+    allocation = allocation.sort_values("Bucket").reset_index(drop=True)
+
+    total_value = allocation["Value"].sum()
+    allocation["Weight"] = np.where(
+        total_value != 0,
+        allocation["Value"] / total_value,
+        np.nan
+    )
+
+    return allocation
+
+
+def build_market_cap_pie_image(allocation_data):
+
+    if allocation_data is None or allocation_data.empty:
+        return None
+
+    fig, ax = plt.subplots(figsize=(4.6, 3.6))
+
+    ax.pie(
+        allocation_data["Value"],
+        labels=allocation_data["Bucket"],
+        autopct="%1.1f%%",
+        startangle=90,
+        colors=PIE_COLORS[: len(allocation_data)],
+        wedgeprops={"edgecolor": "white", "linewidth": 1},
+        textprops={"fontsize": 9}
+    )
+    ax.set_title(
+        "Market Cap Allocation (Excluding Cash)",
+        fontsize=11
+    )
+    ax.axis("equal")
+
+    buffer = BytesIO()
+    fig.savefig(
+        buffer,
+        format="png",
+        dpi=200,
+        bbox_inches="tight"
+    )
+    plt.close(fig)
+    buffer.seek(0)
+    return buffer
+
+
 def build_pdf_report(
     portfolio_name,
     start_date,
@@ -314,7 +488,8 @@ def build_pdf_report(
     summary,
     chart,
     cash_flow_data,
-    holdings_data
+    holdings_data,
+    market_cap_allocation
 ):
 
     buffer = BytesIO()
@@ -434,13 +609,23 @@ def build_pdf_report(
 
     chart_bytes = build_chart_image(chart)
     story.append(Image(chart_bytes, width=6.8 * inch, height=2.8 * inch))
-    story.extend(
-        [
-            Spacer(1, 0.12 * inch),
-            Paragraph("External Cash Flows", section_style),
-            Spacer(1, 0.05 * inch)
-        ]
-    )
+
+    market_cap_chart = build_market_cap_pie_image(market_cap_allocation)
+    if market_cap_chart is not None:
+        story.extend(
+            [
+                Spacer(1, 0.12 * inch),
+                Paragraph("Market Cap Allocation", section_style),
+                Spacer(1, 0.05 * inch)
+            ]
+        )
+        market_cap_image = Image(
+            market_cap_chart,
+            width=3.6 * inch,
+            height=2.8 * inch
+        )
+        market_cap_image.hAlign = "CENTER"
+        story.append(market_cap_image)
 
     cash_flow_rows = [["Date", "Amount"]]
 
@@ -514,6 +699,15 @@ def build_pdf_report(
     ]
     holdings_table.setStyle(TableStyle(holdings_style))
     story.append(holdings_table)
+
+    story.extend(
+        [
+            Spacer(1, 0.12 * inch),
+            Paragraph("External Cash Flows", section_style),
+            Spacer(1, 0.05 * inch)
+        ]
+    )
+    story.append(cash_flow_table)
 
     doc.build(story)
     buffer.seek(0)
@@ -1047,6 +1241,11 @@ if input_file:
         ledger.index.max(),
         ledger.iloc[-1]["Cash"]
     )
+    market_cap_allocation = build_market_cap_allocation(
+        tx,
+        prices,
+        ledger.index.max()
+    )
 
     st.subheader(f"Start Date: {format_display_date(start_date)}")
 
@@ -1074,7 +1273,8 @@ if input_file:
         summary,
         chart,
         cash_flow_table,
-        holdings_table
+        holdings_table,
+        market_cap_allocation
     )
 
     st.download_button(
