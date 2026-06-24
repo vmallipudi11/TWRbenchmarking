@@ -353,7 +353,6 @@ def build_pdf_report(
         ["Portfolio TWR", f"{summary.loc['Actual TWR', 'Portfolio']:.2%}"],
         ["Annualised TWR", f"{summary.loc['Annualised TWR', 'Portfolio']:.2%}"],
         ["Current Portfolio Value", format_inr(portfolio_value)],
-        ["Cash Balance", format_inr(cash_balance)]
     ]
 
     metrics_table = Table(
