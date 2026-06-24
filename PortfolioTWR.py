@@ -1068,6 +1068,7 @@ if input_file:
     pdf_bytes = build_pdf_report(
         selected_portfolio,
         start_date,
+        current_date,
         ledger.iloc[-1]["Portfolio Value"],
         ledger.iloc[-1]["Cash"],
         summary,
