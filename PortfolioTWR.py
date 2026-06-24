@@ -26,6 +26,8 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from datetime import date
+current_date = date.today()
 
 st.set_page_config(page_title="VIKA Portfolio TWR Tracker", layout="wide")
 st.title("VIKA Portfolio TWR Tracker")
@@ -306,6 +308,7 @@ def build_current_holdings(tx, prices, as_of_date, cash_balance):
 def build_pdf_report(
     portfolio_name,
     start_date,
+    current_date,
     portfolio_value,
     cash_balance,
     summary,
@@ -341,6 +344,11 @@ def build_pdf_report(
         Spacer(1, 0.05 * inch),
         Paragraph(
             f"Start Date: {format_display_date(start_date)}",
+            section_style
+        ),
+        Spacer(1, 0.05 * inch),
+        Paragraph(
+            f"Report Date: {format_display_date(current_date)}",
             section_style
         ),
         Spacer(1, 0.1 * inch),
